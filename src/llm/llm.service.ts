@@ -18,7 +18,7 @@ export class LlmService {
     const { prompt, temperature, topP } = dto
 
     const completion = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: dto.model || 'gpt-4o-mini',
       temperature,
       top_p: topP,
       messages: [{ role: 'user', content: prompt }],
@@ -62,11 +62,10 @@ export class LlmService {
 
 
   async streamResponse(dto: GenerateDto, res: ExpressResponse) {
-    const { prompt, temperature, topP } = dto
+    const { prompt, temperature, topP, model } = dto
 
-    // Start streaming request
     const stream = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: model || 'gpt-4o-mini',
       temperature,
       top_p: topP,
       stream: true,
@@ -75,12 +74,10 @@ export class LlmService {
 
     let fullResponse = ''
 
-    // Set headers for Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
 
-    // Send chunks as they arrive
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || ''
       if (content) {
@@ -89,23 +86,24 @@ export class LlmService {
       }
     }
 
-    // Send final signal
     res.write(`event: end\ndata: [DONE]\n\n`)
     res.end()
 
-    // Save full response in DB
     const metrics = this.calculateMetrics(fullResponse)
     await this.prisma.experiment.create({
       data: { prompt, temperature, topP, response: fullResponse, metrics },
     })
   }
 
-  // Simple example metrics: length, coherence, punctuation balance
   calculateMetrics(text: string) {
     const words = text.split(/\s+/).length
     const sentences = text.split(/[.!?]/).length
-    const coherence = Math.min((sentences / words) * 10, 1)
-    const punctuation = (text.match(/[,.!?]/g) || []).length / words
+    const coherenceRaw = Math.min((sentences / words) * 10, 1)
+    const punctuationRaw = (text.match(/[,.!?]/g) || []).length / words
+
+    const coherence = Number(coherenceRaw.toFixed(2))
+    const punctuation = Number(punctuationRaw.toFixed(2))
+
     return { words, sentences, coherence, punctuation }
   }
 

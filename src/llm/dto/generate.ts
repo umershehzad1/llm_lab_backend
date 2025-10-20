@@ -13,4 +13,7 @@ export class GenerateDto {
   @Min(0)
   @Max(1)
   topP: number
+
+  @IsString()
+  model: string
 }
